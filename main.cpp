@@ -14,7 +14,7 @@ using namespace std;
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
-const int taille = 1000;
+const int taille = 15000;
 
 
 void drawPoint(int x0, int y0, TGAImage &image, TGAColor color) {
@@ -57,7 +57,8 @@ void drawTriangle(Point p1, Point p2, Point p3, TGAImage &image, TGAColor color)
 
 int estAudessus(float a, float b, Point p) {
 	float res = a * p.x + b;
-	if (res <= p.y) {
+
+	if (res < p.y) {
 		return 1;
 	}
 	else {
@@ -65,42 +66,82 @@ int estAudessus(float a, float b, Point p) {
 	}
 }
 
+int min(int tab[], int nbVal) {
+	if (nbVal == 0) { return 0; }
+	int min = tab[0];
+	for (int i = 1; i < nbVal; i++) {
+		if (tab[i] < min) {
+			min = tab[i];
+		}
+	}
+	return min;
+}
+
+int max(int tab[], int nbVal) {
+	if (nbVal == 0) { return 0; }
+	int max = tab[0];
+	for (int i = 1; i < nbVal; i++) {
+		if (tab[i] > max) {
+			max = tab[i];
+		}
+	}
+	return max;
+}
+
 void drawFillTriangle(Point p1, Point p2, Point p3, TGAImage &image, TGAColor color) {
 	drawTriangle(p1, p2, p3, image, color);
+	int tabX[3]; tabX[0] = p1.x; tabX[1] = p2.x; tabX[2] = p3.x;
+	int tabY[3]; tabY[0] = p1.y; tabY[1] = p2.y; tabY[2] = p3.y;
+
+	int xMin = min(tabX, 3);
+	int xMax = max(tabX, 3);
+	int yMin = min(tabY, 3);
+	int yMax = max(tabY, 3);
 
 	int compteur = 0;
 	float a1 = (p2.y+0.0 - p1.y+0.0) / (p2.x+0.0 - p1.x+0.0);
 	float b1 = -a1 * p1.x+0.0 + p1.y+0.0;
+	if (p2.x == p1.x) {
+		a1 = 0;
+		b1 = 0;
+	}
 	int res = estAudessus(a1, b1, p3);
 
 	float a2 = (p3.y+0.0 - p2.y+0.0) / (p3.x+0.0 - p2.x+0.0);
 	float b2 = -a2 * p2.x+0.0 + p2.y+0.0;
+	if (p3.x == p2.x) {
+		a2 = 0;
+		b2 = 0;
+	}
 	int res1 = estAudessus(a2, b2, p1);
 
 	float a3 = (p1.y+0.0 - p3.y+0.0) / (p1.x+0.0 - p3.x+0.0);
 	float b3 = -a3 * p3.x+0.0 + p3.y+0.0;
+	if (p1.x == p3.x) {
+		a3 = 0;
+		b3 = 0;
+	}
 	int res2 = estAudessus(a3, b3, p2);
 
-
-	bool isOk = res != res1 || res != res2 || res1 != res2;
+	bool isOnTheSameLine = (a1 == a2 && a1 == a3) && (b1 == b2 && b1 == b3);
+	if (isOnTheSameLine) {
+		return;
+	}
 	
-	for (int i = 0; i < taille; i++) {
-		for (int j = 0; j < taille; j++) {
+	for (int i = xMin; i < xMax; i++) {
+		for (int j = yMin; j < yMax; j++) {
 			if (res * j >= res * (a1 * i + b1) && 
 				res1 * j >= res1 * (a2 * i + b2) && 
-				res2 * j >= res2 * (a3 * i + b3) && isOk) {
+				res2 * j >= res2 * (a3 * i + b3)) {
 				image.set(i, j, color);
-				compteur++;
-				if (compteur == taille * taille / 3) {
-					cout << compteur << endl;
-				}
 			}
 		}
 	}
 
-	/*line(0, b1, 1000, a1 * 1000 + b1, image, red);
-	line(0, b2, 1000, a2 * 1000 + b2, image, red);
-	line(0, b3, 1000, a3 * 1000 + b3, image, red);*/
+	//Sert pour le débug
+	/*line(0, b1, 1000, a1 * 1000 + b1, image, res == 1 ? red : white);
+	line(0, b2, 1000, a2 * 1000 + b2, image, res1 == 1 ? red : white);
+	line(0, b3, 1000, a3 * 1000 + b3, image, res2 == 1 ? red : white);*/
 }
 
 TGAColor calcColor(double interval, double value) {
@@ -146,8 +187,6 @@ TGAColor calcColor(double interval, double value) {
 void drawFile(string fileName, TGAImage &image, TGAColor color) {
 
 	ifstream fichier(fileName, ios::in);  // on ouvre le fichier en lecture
-	
-
 
 	if (fichier)  // si l'ouverture a réussi
 	{
@@ -181,10 +220,10 @@ void drawFile(string fileName, TGAImage &image, TGAColor color) {
 		}
 
 		for (int i = 0; i < indiceTriangle-1 ; i++) {
-			drawTriangle(tabPoint[tabTriangle[i].x-1], 
+			drawFillTriangle(tabPoint[tabTriangle[i].x-1], 
 					tabPoint[tabTriangle[i].y-1], 
 					tabPoint[tabTriangle[i].z-1], 
-					image, color);
+					image, calcColor(indiceTriangle,i));
 		}
 
 		fichier.close();  // on ferme le fichier
@@ -199,7 +238,7 @@ int main(int argc, char** argv) {
 	drawFile("diablo3_pose.txt", image, white);
 	//drawFile("black_head.txt", image, white);
 	//drawFile("bogie_head.txt", image, white);
-	//drawFillTriangle(Point(20, 90, 10), Point(100, 130, 0), Point(60, 110, 0), image, white);
+	//drawFillTriangle(Point(10, 10, 10), Point(100, 20, 0), Point(100, 100, 0), image, white);
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("output.tga");
     return 0;
