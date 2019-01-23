@@ -259,30 +259,27 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGACo
 		return;
 	}
 
-	//Point3D courant;
+	Point3D courant;
 
 	//Pour chaque pixel qui pourrait être dans le triangle on vérifie si il est dedans et si oui on le colorie
 	for (int j = yMin; j < yMax; j++) {
 
-		t = (j - p1.y) / (float)(p2.y - p1.y);
-		z = p1.z * (1. - t) + p2.z * t;
-
 		for (int i = xMin; i < xMax; i++) {
 			
-			/*courant = Point3D(i, j, 0);
+			courant = Point3D(i, j, 0);
 			Vec3F bc_screen = barycentre(p1, p2, p3, courant);
 
 			courant.z = 0;
 
 			courant.z += p1.z * bc_screen.x;
 			courant.z += p2.z * bc_screen.y;
-			courant.z += p3.z * bc_screen.z;*/
+			courant.z += p3.z * bc_screen.z;
 
 			//Si je suis dans le triangle
 			if (res * j >= res * (a1 * i + b1) && res1 * j >= res1 * (a2 * i + b2) && res2 * j >= res2 * (a3 * i + b3)) {
-				if (zbuffer[i + j * taille] <= z) {
-					zbuffer[i + j * taille] = z;
-					image.set(i, j, TGAColor(z / taille * 255, z / taille * 255, z / taille * 255, 255));
+				if (zbuffer[i + j * taille] <= courant.z) {
+					zbuffer[i + j * taille] = courant.z;
+					image.set(i, j, color);
 				}
 			}
 		}
