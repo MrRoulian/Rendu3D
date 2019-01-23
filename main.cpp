@@ -1,5 +1,6 @@
 #include "tgaimage.h"
 #include "Point3D.h"
+#include "Vec3F.h"
 #include <iostream>
 #include <string>
 #include <sstream> 
@@ -7,21 +8,19 @@
 #include <fstream>
 #include <vector>
 #include <time.h>
-#include <D2d1_1helper.h>
 
 
 using namespace std;
 
-
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
 const int taille = 2000;
-
+int *zbuffer = new int[taille*taille];
 
 #pragma region Math
 
-D2D1_VECTOR_3F produitVectoriel (D2D1_VECTOR_3F vec1, D2D1_VECTOR_3F vec2) {
-	D2D1_VECTOR_3F res;
+Vec3F produitVectoriel (Vec3F vec1, Vec3F vec2) {
+	Vec3F res;
 
 	res.x = vec1.y*vec2.z - vec1.z*vec2.y;
 	res.y = vec1.z*vec2.x - vec1.x*vec2.z;
@@ -30,8 +29,8 @@ D2D1_VECTOR_3F produitVectoriel (D2D1_VECTOR_3F vec1, D2D1_VECTOR_3F vec2) {
 	return res;
 }
 
-D2D1_VECTOR_3F getNormal(Point3D vec1, Point3D vec2, Point3D vec3) {
-	D2D1_VECTOR_3F res;
+Vec3F getNormal(Point3D vec1, Point3D vec2, Point3D vec3) {
+	Vec3F res;
 
 	res.x = (vec2.yf - vec1.yf)*(vec3.zf - vec1.zf) - (vec2.zf - vec1.zf)*(vec3.yf - vec1.yf);
 	res.y = (vec2.zf - vec1.zf)*(vec3.xf - vec1.xf) - (vec2.xf - vec1.xf)*(vec3.zf - vec1.zf);
@@ -40,7 +39,7 @@ D2D1_VECTOR_3F getNormal(Point3D vec1, Point3D vec2, Point3D vec3) {
 	return res;
 }
 
-float produitScalaire(D2D1_VECTOR_3F vec1, D2D1_VECTOR_3F vec2) {
+float produitScalaire(Vec3F vec1, Vec3F vec2) {
 	float res;
 
 	res = vec1.x*vec2.x + vec1.y*vec2.y + vec1.z*vec2.z;
@@ -79,6 +78,27 @@ int estAudessus(float a, float b, Point3D p) {
 	else {
 		return -1;
 	}
+}
+
+Vec3F barycentre(Point3D a, Point3D b, Point3D c, Point3D p) {
+	Vec3F sous[2];
+	sous[0].x = c.x - a.x;
+	sous[0].y = b.x - a.x;
+	sous[0].z = a.x - p.x;
+
+	sous[1].x = c.y - a.y;
+	sous[1].y = b.y - a.y;
+	sous[1].z = a.y - p.y;
+
+	Vec3F prodVec = produitVectoriel(sous[0], sous[1]);
+
+	if (abs(prodVec.z) > 1e-2) {
+		return Vec3F(1.f - (prodVec.x + prodVec.y) / prodVec.z, prodVec.y / prodVec.z, prodVec.x / prodVec.z);
+	}
+	else {
+		return Vec3F(-1, 1, 1); // in this case generate negative coordinates, it will be thrown away by the rasterizator
+	}
+
 }
 
 #pragma endregion
@@ -177,7 +197,6 @@ void drawTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGAColor 
 }
 
 void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGAColor color) {
-	drawTriangle(p1, p2, p3, image, color);
 	//Varialbe qui servent pour l'opti
 	vector<int> tabX = vector<int>(); tabX.push_back(p1.x); tabX.push_back(p2.x); tabX.push_back(p3.x);
 	vector<int> tabY = vector<int>(); tabY.push_back(p1.y); tabY.push_back(p2.y); tabY.push_back(p3.y);
@@ -187,8 +206,27 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGACo
 	int yMin = minTab(tabY);
 	int yMax = maxTab(tabY);
 
-	/*D2D1_VECTOR_3F abc;
-	abc = produitVectoriel(p1,p2);*/
+	float t, z;
+
+	if (p1.y == yMin) {
+		swap(p1, p1);
+	}
+	else if (p2.y == yMin) {
+		swap(p1, p2);
+	}
+	else if (p3.y == yMin) {
+		swap(p1, p3);
+	}
+
+	if (p1.y == yMax) {
+		swap(p2, p1);
+	}
+	else if (p2.y == yMax) {
+		swap(p2, p2);
+	}
+	else if (p3.y == yMax) {
+		swap(p2, p3);
+	}
 
 	//Je détermine les 3 fonctions affines du triangle et le sens dans le quel je dois remplir (a gauche de la courbe ou a droite)
 	float a1 = (p2.y + 0.0 - p1.y + 0.0) / (p2.x + 0.0 - p1.x + 0.0);
@@ -221,11 +259,31 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGACo
 		return;
 	}
 
+	//Point3D courant;
+
 	//Pour chaque pixel qui pourrait être dans le triangle on vérifie si il est dedans et si oui on le colorie
-	for (int i = xMin; i < xMax; i++) {
-		for (int j = yMin; j < yMax; j++) {
+	for (int j = yMin; j < yMax; j++) {
+
+		t = (j - p1.y) / (float)(p2.y - p1.y);
+		z = p1.z * (1. - t) + p2.z * t;
+
+		for (int i = xMin; i < xMax; i++) {
+			
+			/*courant = Point3D(i, j, 0);
+			Vec3F bc_screen = barycentre(p1, p2, p3, courant);
+
+			courant.z = 0;
+
+			courant.z += p1.z * bc_screen.x;
+			courant.z += p2.z * bc_screen.y;
+			courant.z += p3.z * bc_screen.z;*/
+
+			//Si je suis dans le triangle
 			if (res * j >= res * (a1 * i + b1) && res1 * j >= res1 * (a2 * i + b2) && res2 * j >= res2 * (a3 * i + b3)) {
-				image.set(i, j, color);
+				if (zbuffer[i + j * taille] <= z) {
+					zbuffer[i + j * taille] = z;
+					image.set(i, j, TGAColor(z / taille * 255, z / taille * 255, z / taille * 255, 255));
+				}
 			}
 		}
 	}
@@ -236,7 +294,7 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGACo
 	line(0, b3, 1000, a3 * 1000 + b3, image, res2 == 1 ? red : white);*/
 }
 
-void drawFile(string fileName, TGAImage &image, TGAColor color) {
+void drawFile(string fileName, TGAImage &image, TGAColor color, bool arcEnCiel) {
 
 	ifstream fichier(fileName, ios::in);  // on ouvre le fichier en lecture
 
@@ -250,10 +308,7 @@ void drawFile(string fileName, TGAImage &image, TGAColor color) {
 		int x, y, z;
 		vector<Point3D> points = vector<Point3D>();
 		vector<Point3D> triangles = vector<Point3D>();
-		D2D1_VECTOR_3F lumiere;
-		lumiere.x = 0.0;
-		lumiere.y = 0.0;
-		lumiere.z = 1.0;
+		Vec3F lumiere(0,0,1);
 
 		while (getline(fichier, ligne)) {
 			if (ligne[0] == 'v' && ligne[1] == ' ') {
@@ -269,7 +324,7 @@ void drawFile(string fileName, TGAImage &image, TGAColor color) {
 			}
 		}
 
-		D2D1_VECTOR_3F n;
+		Vec3F n;
 		Point3D point1, point2, point3;
 		float norme;
 
@@ -286,12 +341,16 @@ void drawFile(string fileName, TGAImage &image, TGAColor color) {
 
 			intensity = produitScalaire(lumiere, n);
 
-			if (intensity > 0) {
-				drawFillTriangle(point1, point2, point3,
-					image, calcColor(taille, points.at(triangles.at(i).x - 1).y % taille,intensity));
+			if (intensity >= 0) {
+				if (arcEnCiel) {
+					drawFillTriangle(point1, point2, point3,
+						image, calcColor(taille, (taille - points.at(triangles.at(i).x - 1).z) % taille/4, intensity));
+				}
+				else {
+					drawFillTriangle(point1, point2, point3,
+						image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
+				}
 
-				/*drawFillTriangle(point1, point2, point3,
-					image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));*/
 			}
 		}
 
@@ -306,10 +365,10 @@ void drawFile(string fileName, TGAImage &image, TGAColor color) {
 
 int main(int argc, char** argv) {
     TGAImage image(taille, taille, TGAImage::RGB);
-	//drawFile("diablo3_pose.txt", image, white);
-	//drawFile("black_head.txt", image, white);
-	drawFile("bogie_head.txt", image, white);
-	drawFile("boggie_body.txt", image, white);
+	drawFile("diablo3_pose.txt", image, white, true);
+	//drawFile("black_head.txt", image, white, true);
+	//drawFile("boggie_head.txt", image, white, false);
+	//drawFile("boggie_body.txt", image, white, true);
 	//drawFillTriangle(Point3D(10, 10, 10), Point3D(100, 20, 0), Point3D(90, 90, 0), image, white);
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("output.tga");
