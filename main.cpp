@@ -1,6 +1,4 @@
 #include "tgaimage.h"
-#include "Point3D.h"
-#include "Vec3F.h"
 #include <iostream>
 #include <string>
 #include <sstream> 
@@ -16,6 +14,31 @@ const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
 const int taille = 2000;
 int *zbuffer = new int[taille*taille];
+
+#pragma region Class
+
+struct Vec3F {
+	float x, y, z;
+
+	Vec3F(float x, float y, float z) : x(x), y(y), z(z) {};
+
+	Vec3F() { x = 0; y = 0; z = 0; };
+};
+
+struct Point3D {
+	int x, y, z;
+	float xf, yf, zf;
+
+	Point3D(int x, int y, int z) : x(x), y(y), z(z) {};
+
+	Point3D(int x, int y, int z, float xf, float yf, float zf) : x(x), y(y), z(z), xf(xf), yf(yf), zf(zf) {};
+
+	Point3D() { x = 0; y = 0; z = 0; };
+};
+
+
+#pragma endregion
+
 
 #pragma region Math
 
@@ -206,28 +229,6 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGACo
 	int yMin = minTab(tabY);
 	int yMax = maxTab(tabY);
 
-	float t, z;
-
-	if (p1.y == yMin) {
-		swap(p1, p1);
-	}
-	else if (p2.y == yMin) {
-		swap(p1, p2);
-	}
-	else if (p3.y == yMin) {
-		swap(p1, p3);
-	}
-
-	if (p1.y == yMax) {
-		swap(p2, p1);
-	}
-	else if (p2.y == yMax) {
-		swap(p2, p2);
-	}
-	else if (p3.y == yMax) {
-		swap(p2, p3);
-	}
-
 	//Je détermine les 3 fonctions affines du triangle et le sens dans le quel je dois remplir (a gauche de la courbe ou a droite)
 	float a1 = (p2.y + 0.0 - p1.y + 0.0) / (p2.x + 0.0 - p1.x + 0.0);
 	float b1 = -a1 * p1.x + 0.0 + p1.y + 0.0;
@@ -267,19 +268,19 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGACo
 		for (int i = xMin; i < xMax; i++) {
 			
 			courant = Point3D(i, j, 0);
-			Vec3F bc_screen = barycentre(p1, p2, p3, courant);
+			Vec3F vecteurBari = barycentre(p1, p2, p3, courant);
 
 			courant.z = 0;
 
-			courant.z += p1.z * bc_screen.x;
-			courant.z += p2.z * bc_screen.y;
-			courant.z += p3.z * bc_screen.z;
+			courant.z += p1.z * vecteurBari.x;
+			courant.z += p2.z * vecteurBari.y;
+			courant.z += p3.z * vecteurBari.z;
 
 			//Si je suis dans le triangle
 			if (res * j >= res * (a1 * i + b1) && res1 * j >= res1 * (a2 * i + b2) && res2 * j >= res2 * (a3 * i + b3)) {
 				if (zbuffer[i + j * taille] <= courant.z) {
 					zbuffer[i + j * taille] = courant.z;
-					image.set(i, j, color);
+					image.set(i, j, color); // ici mettre color
 				}
 			}
 		}
@@ -341,7 +342,7 @@ void drawFile(string fileName, TGAImage &image, TGAColor color, bool arcEnCiel) 
 			if (intensity >= 0) {
 				if (arcEnCiel) {
 					drawFillTriangle(point1, point2, point3,
-						image, calcColor(taille, (taille - points.at(triangles.at(i).x - 1).z) % taille/4, intensity));
+						image, calcColor(taille, points.at(triangles.at(i).x - 1).z % taille, intensity));
 				}
 				else {
 					drawFillTriangle(point1, point2, point3,
@@ -363,7 +364,7 @@ void drawFile(string fileName, TGAImage &image, TGAColor color, bool arcEnCiel) 
 int main(int argc, char** argv) {
     TGAImage image(taille, taille, TGAImage::RGB);
 	drawFile("diablo3_pose.txt", image, white, true);
-	//drawFile("black_head.txt", image, white, true);
+	//drawFile("black_head.txt", image, white, false);
 	//drawFile("boggie_head.txt", image, white, false);
 	//drawFile("boggie_body.txt", image, white, true);
 	//drawFillTriangle(Point3D(10, 10, 10), Point3D(100, 20, 0), Point3D(90, 90, 0), image, white);
