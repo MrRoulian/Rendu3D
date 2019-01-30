@@ -4,6 +4,7 @@
 #include <sstream> 
 #include <cstdlib>
 #include <fstream>
+#include <algorithm>
 #include <vector>
 #include <time.h>
 
@@ -15,8 +16,6 @@ const TGAColor red   = TGAColor(255, 0,   0,   255);
 const int taille = 2000;
 int *zbuffer = new int[taille*taille];
 
-TGAImage texture = TGAImage();
-int textureH, textureW;
 
 
 #pragma region Class
@@ -52,8 +51,31 @@ struct Point3D {
 	}
 };
 
+struct Image {
+	TGAImage texture = TGAImage();
+	TGAImage textureNormal = TGAImage();
+	int textH, textW, textNH, textNW;
+
+	Image(const char* textureFile, const char* textureNormalFile) {
+		this->texture = TGAImage();
+		this->textureNormal = TGAImage();
+		this->texture.read_tga_file(textureFile);
+		this->textureNormal.read_tga_file(textureNormalFile);
+		this->textH = texture.get_height();
+		this->textW = texture.get_width();
+		this->textNH = textureNormal.get_height();
+		this->textNW = textureNormal.get_width();
+
+		texture.flip_vertically();
+		textureNormal.flip_vertically();
+	};
+
+	Image() {};
+};
 
 #pragma endregion
+
+Image img;
 
 #pragma region Math
 
@@ -234,14 +256,18 @@ void drawTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGAColor 
 	line(p3.x, p3.y, p1.x, p1.y, image, color);
 }
 
-void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F v1, Vec3F v2, Vec3F v3, float intensity) {
+void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F v1, Vec3F v2, Vec3F v3) {
 	//Varialbe qui servent pour l'opti
 	vector<int> tabX = vector<int>(); tabX.push_back(p1.x); tabX.push_back(p2.x); tabX.push_back(p3.x);
 	vector<int> tabY = vector<int>(); tabY.push_back(p1.y); tabY.push_back(p2.y); tabY.push_back(p3.y);
 
 	Point3D courant;
 	TGAColor color;
+	TGAColor colorNormal;
 	Vec3F texturePoint;
+	Vec3F n;
+	float norme, intensity;
+	Vec3F lumiere(0, 0, 1);
 
 	int xMin = minTab(tabX);
 	int xMax = maxTab(tabX);
@@ -290,7 +316,20 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 			texturePoint.x = v1.x * vecteurBari.x + v2.x * vecteurBari.y + v3.x * vecteurBari.z;
 			texturePoint.y = v1.y * vecteurBari.x + v2.y * vecteurBari.y + v3.y * vecteurBari.z;
 
-			color = texture.get(texturePoint.x*textureW, texturePoint.y*textureH);
+			color = img.texture.get(texturePoint.x*img.textW, texturePoint.y*img.textH);
+			colorNormal = img.textureNormal.get(texturePoint.x*img.textNW, texturePoint.y*img.textNH);
+
+
+			//Normalisation
+			n = Vec3F((float)colorNormal.raw[2] / 128 - 1, (float)colorNormal.raw[1] / 128 - 1, (float)colorNormal.raw[0] / 128 - 1);
+			norme = sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
+			n.x /= norme;
+			n.y /= norme;
+			n.z /= norme;
+
+			//Calcul de l'intensité
+			intensity = max(0.f, min(1.f, produitScalaire(lumiere, n)));
+
 
 			for (int k = 0; k < 3; k++) color.raw[k] *= intensity;
 
@@ -316,7 +355,7 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 	line(0, b3, 1000, a3 * 1000 + b3, image, res2 == 1 ? red : white);*/
 }
 
-void drawFile(string fileName, TGAImage &image, TGAColor color, bool arcEnCiel) {
+void drawFile(string fileName, TGAImage &image) {
 
 	ifstream fichier(fileName, ios::in);  // on ouvre le fichier en lecture
 
@@ -325,7 +364,7 @@ void drawFile(string fileName, TGAImage &image, TGAColor color, bool arcEnCiel) 
 		string option;
 		string ligne;
 		string trash;
-		float intensity, xf, yf , zf;
+		float xf, yf , zf;
 		int p1, p2, p3;
 		int t1, t2, t3;
 		int x, y, z, poubelle;
@@ -335,7 +374,6 @@ void drawFile(string fileName, TGAImage &image, TGAColor color, bool arcEnCiel) 
 		vector<Point3D> triangles = vector<Point3D>();
 		vector<Point3D> centerF = vector<Point3D>();
 		vector<Vec3F> textCoord = vector<Vec3F>();
-		Vec3F lumiere(0,0,1);
 
 		while (getline(fichier, ligne)) {
 			if (ligne[0] == 'v' && ligne[1] == ' ') {
@@ -357,10 +395,8 @@ void drawFile(string fileName, TGAImage &image, TGAColor color, bool arcEnCiel) 
 		}
 
 
-		Vec3F n;
 		Point3D point1, point2, point3;
 		Vec3F v1, v2, v3;
-		float norme;
 
 		for (int i = 0; i < triangles.size(); i++) {
 
@@ -373,19 +409,8 @@ void drawFile(string fileName, TGAImage &image, TGAColor color, bool arcEnCiel) 
 			point1 = points.at(triangles.at(i).x - 1);
 			point2 = points.at(triangles.at(i).y - 1);
 			point3 = points.at(triangles.at(i).z - 1);
-
-			//Normalisation
-			n = getNormal(point1, point2, point3);
-			norme = sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
-			n.x /= norme;
-			n.y /= norme;
-			n.z /= norme;
-
-			//Calcul de l'intensité
-			intensity = produitScalaire(lumiere, n);
-
-			if (intensity > 0)
-				drawFillTriangle(point1, point2, point3, image, v1, v2, v3, intensity);
+			
+			drawFillTriangle(point1, point2, point3, image, v1, v2, v3);
 		}
 
 		fichier.close();  // on ferme le fichier
@@ -398,18 +423,23 @@ void drawFile(string fileName, TGAImage &image, TGAColor color, bool arcEnCiel) 
 #pragma endregion
 
 int main(int argc, char** argv) {
-	texture.read_tga_file("african_head_diffuse.tga");
-	texture.flip_vertically();
-	textureH = texture.get_height();
-	textureW = texture.get_width();
+	TGAImage image(taille, taille, TGAImage::RGB);
 
-    TGAImage image(taille, taille, TGAImage::RGB);
-	//drawFile("diablo3_pose.txt", image, white, true);
-	drawFile("black_head.txt", image, white, false);
-	//drawFile("boggie_head.txt", image, white, false);
-	//drawFile("boggie_body.txt", image, white, true);
+	img = Image("obj/african_head/african_head_diffuse.tga","obj/african_head/african_head_nm.tga");
+	drawFile("obj/african_head/african_head.obj", image);
+
+	img = Image("obj/african_head/african_head_eye_inner_diffuse.tga", "obj/african_head/african_head_eye_inner_nm.tga");
+	drawFile("obj/african_head/african_head_eye_inner.obj", image);
+
+	//img = Image("obj/diablo3_pose/diablo3_pose_diffuse.tga","obj/diablo3_pose/diablo3_pose_nm.tga");
+	//drawFile("obj/diablo3_pose/diablo3_pose.obj", image);
+
+	//drawFile("obj/boggie/boggie_head.obj", image);
+	//drawFile("obj/boggie/boggie_body.obj", image);
+
 	//drawFillTriangle(Point3D(100, 100, 100), Point3D(900, 100, 100), Point3D(500, 900, 100), image, TGAColor(255, 0, 0, 255), TGAColor(0, 255, 0, 255), TGAColor(0, 0, 255, 255));
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("output.tga");
+
     return 0;
 }
