@@ -322,10 +322,10 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 
 			//Normalisation
 			n = Vec3F((float)colorNormal.raw[2] / 128 - 1, (float)colorNormal.raw[1] / 128 - 1, (float)colorNormal.raw[0] / 128 - 1);
-			norme = sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
+			/*norme = sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
 			n.x /= norme;
 			n.y /= norme;
-			n.z /= norme;
+			n.z /= norme;*/
 
 			//Calcul de l'intensité
 			intensity = max(0.f, min(1.f, produitScalaire(lumiere, n)));
@@ -341,7 +341,7 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 
 			//Si je suis dans le triangle
 			if (res * j >= res * (a1 * i + b1) && res1 * j >= res1 * (a2 * i + b2) && res2 * j >= res2 * (a3 * i + b3)) {
-				if (zbuffer[i + j * taille] <= courant.z) {
+				if (zbuffer[i + j * taille] < courant.z) {
 					zbuffer[i + j * taille] = courant.z;
 					image.set(i, j, color);
 				}
@@ -425,17 +425,29 @@ void drawFile(string fileName, TGAImage &image) {
 int main(int argc, char** argv) {
 	TGAImage image(taille, taille, TGAImage::RGB);
 
+	
 	img = Image("obj/african_head/african_head_diffuse.tga","obj/african_head/african_head_nm.tga");
 	drawFile("obj/african_head/african_head.obj", image);
 
 	img = Image("obj/african_head/african_head_eye_inner_diffuse.tga", "obj/african_head/african_head_eye_inner_nm.tga");
 	drawFile("obj/african_head/african_head_eye_inner.obj", image);
+	
 
-	//img = Image("obj/diablo3_pose/diablo3_pose_diffuse.tga","obj/diablo3_pose/diablo3_pose_nm.tga");
-	//drawFile("obj/diablo3_pose/diablo3_pose.obj", image);
+	/*
+	img = Image("obj/diablo3_pose/diablo3_pose_diffuse.tga","obj/diablo3_pose/diablo3_pose_nm.tga");
+	drawFile("obj/diablo3_pose/diablo3_pose.obj", image);
+	*/
 
-	//drawFile("obj/boggie/boggie_head.obj", image);
-	//drawFile("obj/boggie/boggie_body.obj", image);
+	/*
+	img = Image("obj/boggie/body_diffuse.tga", "obj/boggie/body_nm_tangent.tga");
+	drawFile("obj/boggie/body.obj", image);
+
+	img = Image("obj/boggie/head_diffuse.tga", "obj/boggie/head_nm_tangent.tga");
+	drawFile("obj/boggie/head.obj", image);
+
+	img = Image("obj/boggie/eyes_diffuse.tga", "obj/boggie/eyes_nm_tangent.tga");
+	drawFile("obj/boggie/eyes.obj", image);
+	*/
 
 	//drawFillTriangle(Point3D(100, 100, 100), Point3D(900, 100, 100), Point3D(500, 900, 100), image, TGAColor(255, 0, 0, 255), TGAColor(0, 255, 0, 255), TGAColor(0, 0, 255, 255));
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
