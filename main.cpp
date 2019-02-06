@@ -16,7 +16,7 @@ using namespace std;
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
-const int taille = 2000;
+const int taille = 1000;
 int *zbuffer = new int[taille*taille];
 
 
@@ -58,6 +58,7 @@ struct Matrix {
 		data[0][0] = f1;
 		data[1][0] = f2;
 		data[2][0] = f3;
+		data[3][0] = 1;
 	}
 
 	//Retourne une matrice d'identité de taille size
@@ -158,11 +159,12 @@ struct Image {
 
 Image img;
 Vec3F lumiere(0, 0, 1);
-Vec3F eye(1, 1, 3);
+Vec3F eye(1, -1, 3);
 Vec3F center(0, 0, 0);
-Matrix ModelView;
-Matrix Projection;
-Matrix ViewPort;
+Matrix modelView;
+Matrix projection;
+Matrix viewPort;
+Matrix produitMat;
 
 #pragma region Math
 
@@ -432,13 +434,11 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 	if (isOnTheSameLine) {
 		return;
 	}
-	int temp;
+
 	//Pour chaque pixel qui pourrait être dans le triangle on vérifie si il est dedans et si oui on le colorie
 	for (int j = yMin; j < yMax; j++) {
 
 		for (int i = xMin; i < xMax; i++) {
-			
-			temp = i - taille * numImage;
 
 			courant = Point3D(i, j, 0);
 			Vec3F vecteurBari = barycentre(p1, p2, p3, courant);
@@ -468,9 +468,9 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 
 			//Si je suis dans le triangle
 			if (res * j >= res * (a1 * i + b1) && res1 * j >= res1 * (a2 * i + b2) && res2 * j >= res2 * (a3 * i + b3)) {
-				if (zbuffer[temp + j * taille] < courant.z) {
-					zbuffer[temp + j * taille] = courant.z;
-					image.set(i, j, color);
+				if (zbuffer[i + j * taille] < courant.z) {
+					zbuffer[i + j * taille] = courant.z;
+					image.set(i + taille*numImage, j, color);
 				}
 			}
 		}
@@ -502,14 +502,20 @@ void drawFile(string fileName, TGAImage &image, int numImage) {
 			if (ligne[0] == 'v' && ligne[1] == ' ') {
 				istringstream(ligne) >> option >> xf >> yf >> zf;
 				
-				x = xf * (taille / 2) + taille / 2 + numImage*taille;
+				/*x = xf * (taille / 2) + taille / 2;
 				y = yf * (taille / 2) + taille / 2;
 				z = zf * (taille / 2) + taille / 2;
 
-				v = Vec3F(x, y, z);
+				v = Vec3F(x, y, z);*/
 
-				//Normalement avec ça j'ai la caméra ou je veux
-				//v = Vec3F(ViewPort.multiply(Projection).multiply(ModelView).multiply(Matrix(xf,yf,zf)));
+				v = Vec3F(produitMat.multiply(Matrix(xf,yf,zf)));
+
+				v.x = min(taille + 0.f, v.x);
+				v.x = v.x > 0.f ? v.x : 0.f;
+				v.y = min(taille + 0.f, v.y);
+				v.y = v.y > 0.f ? v.y : 0.f;
+				v.z = min(taille + 0.f, v.z);
+				v.z = v.z > 0.f ? v.z : 0.f;
 
 				points.push_back(Point3D(v.x, v.y, v.z, xf, yf, zf));
 			}
@@ -553,31 +559,59 @@ void drawFile(string fileName, TGAImage &image, int numImage) {
 #pragma endregion
 
 int main(int argc, char** argv) {
-	int nbImages = 2;
+
+	vector<Vec3F> eyes;
+	eyes.push_back(Vec3F(0, 0, 2)); // devant
+	eyes.push_back(Vec3F(1, 0, 1));
+	eyes.push_back(Vec3F(2, 0, 0)); // a droite
+	eyes.push_back(Vec3F(1, 0, -1));
+	eyes.push_back(Vec3F(0, 0, -2)); // derrière
+	eyes.push_back(Vec3F(-1, 0, -1));
+	eyes.push_back(Vec3F(-2, 0, 0)); // a gauche
+	eyes.push_back(Vec3F(-1, 0, 1));
+	int nbImages = eyes.size();
 
 	TGAImage image(taille*nbImages, taille, TGAImage::RGB);
 
-	ModelView = lookat(eye, center, Vec3F(0, 1, 0));
-	Projection = Matrix(4);
-	ViewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
-	Projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
+	modelView = lookat(eye, center, Vec3F(0, 1, 0));
+	projection = Matrix(4);
+	viewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
+	projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
 
-	Matrix z = (ViewPort.multiply(Projection).multiply(ModelView));
+	produitMat = viewPort.multiply(projection);
+	produitMat = produitMat.multiply(modelView);
 
-	
+	/*
 	img = Image("obj/african_head/african_head_diffuse.tga","obj/african_head/african_head_nm.tga");
 	drawFile("obj/african_head/african_head.obj", image,0);
 
 	img = Image("obj/african_head/african_head_eye_inner_diffuse.tga", "obj/african_head/african_head_eye_inner_nm.tga");
 	drawFile("obj/african_head/african_head_eye_inner.obj", image,0);
+	*/
 
-	
-	for (int i = 0; i < taille*taille; i++) {
-		zbuffer[i] = -1;
+	img = Image("obj/diablo3_pose/diablo3_pose_diffuse.tga", "obj/diablo3_pose/diablo3_pose_nm.tga");
+
+	for (int k = 0; k < nbImages; k++) {
+		eye = eyes[k];
+		lumiere = eye;
+		lumiere.normalize();
+
+		modelView = lookat(eye, center, Vec3F(0, 1, 0));
+		projection = Matrix(4);
+		viewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
+		projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
+
+		produitMat = viewPort.multiply(projection);
+		produitMat = produitMat.multiply(modelView);
+
+		for (int i = 0; i < taille*taille; i++) {
+			zbuffer[i] = -1;
+		}
+
+		cout << k << endl;
+
+		drawFile("obj/diablo3_pose/diablo3_pose.obj", image, k);
 	}
-	
-	img = Image("obj/diablo3_pose/diablo3_pose_diffuse.tga","obj/diablo3_pose/diablo3_pose_nm.tga");
-	drawFile("obj/diablo3_pose/diablo3_pose.obj", image,1);	
 	
 
 	/*
