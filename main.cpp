@@ -8,6 +8,9 @@
 #include <vector>
 #include <time.h>
 
+#include <cmath>
+#include <cassert>
+
 
 using namespace std;
 
@@ -20,12 +23,90 @@ int *zbuffer = new int[taille*taille];
 
 #pragma region Class
 
+struct Matrix {
+	vector<vector<float>> data;
+	int ligne, colonne;
+
+	Matrix() : ligne(4), colonne(4) { 
+		data.resize(ligne);
+		for (int i = 0; i < ligne; i++) {
+			data[i].resize(colonne);
+			for (int j = 0; j < colonne; j++) {
+				data[i][j] = 0;
+			}
+		}
+	}; 
+	
+	Matrix(int ligne, int colonne) : ligne(ligne), colonne(colonne) {
+		data.resize(ligne);
+		for (int i = 0; i < ligne; i++) {
+			data[i].resize(colonne);
+			for (int j = 0; j < colonne; j++) {
+				data[i][j] = 0;
+			}
+		}
+	};
+
+	Matrix(float f1, float f2, float f3) : ligne(4), colonne(1) {
+		data.resize(ligne);
+		for (int i = 0; i < ligne; i++) {
+			data[i].resize(colonne);
+			for (int j = 0; j < colonne; j++) {
+				data[i][j] = 0;
+			}
+		}
+		data[0][0] = f1;
+		data[1][0] = f2;
+		data[2][0] = f3;
+	}
+
+	//Retourne une matrice d'identité de taille size
+	Matrix (int size) : ligne(size), colonne(size){
+		data.resize(ligne);
+		for (int i = 0; i < size; i++) {
+			data[i].resize(colonne);
+			data[i][i] = 1;
+		}
+	}
+
+	Matrix multiply(Matrix m) {
+		assert(colonne == m.ligne);
+		Matrix result(ligne, m.colonne);
+		for (int i = 0; i < ligne; i++) {
+			for (int j = 0; j < m.colonne; j++) {
+				result.data[i][j] = 0.f;
+				for (int k = 0; k < colonne; k++) {
+					result.data[i][j] += data[i][k] * m.data[k][j];
+				}
+			}
+		}
+		return result;
+	}
+};
+
 struct Vec3F {
 	float x, y, z;
 
 	Vec3F(float x, float y, float z) : x(x), y(y), z(z) {};
 
+	Vec3F(Matrix m) : x(ceil(m.data[0][0] / m.data[3][0])), y(ceil(m.data[1][0] / m.data[3][0])), z(ceil(m.data[2][0] / m.data[3][0])) {}
+
 	Vec3F() { x = 0; y = 0; z = 0; };
+
+	void normalize() {
+		float norme = sqrt(x*x + y*y + z*z);
+		x /= norme;
+		y /= norme;
+		z /= norme;
+	}
+
+	float getNorme() {
+		return sqrt(x*x + y * y + z * z);
+	}
+
+	Vec3F soustraction(Vec3F v) {
+		return Vec3F(x - v.x, y - v.y, z - v.z);
+	}
 };
 
 struct Vec2I {
@@ -76,6 +157,12 @@ struct Image {
 #pragma endregion
 
 Image img;
+Vec3F lumiere(0, 0, 1);
+Vec3F eye(1, 1, 3);
+Vec3F center(0, 0, 0);
+Matrix ModelView;
+Matrix Projection;
+Matrix ViewPort;
 
 #pragma region Math
 
@@ -205,6 +292,48 @@ TGAColor calcColor(double interval, double value, float intensity) {
 	return color;
 }
 
+Matrix viewport(int x, int y, int w, int h) {
+	Matrix mat(4);
+	mat.data[0][3] = x + w / 2.f;
+	mat.data[1][3] = y + h / 2.f;
+	mat.data[2][3] = taille / 2.f;
+
+	mat.data[0][0] = w / 2.f;
+	mat.data[1][1] = h / 2.f;
+	mat.data[2][2] = taille / 2.f;
+	return mat;
+}
+
+Matrix lookat(Vec3F eye, Vec3F center, Vec3F up) {
+	Vec3F z = (eye.soustraction(center));
+	z.normalize();
+
+	Vec3F x = produitVectoriel(up,z);
+	x.normalize();
+
+	Vec3F y = produitVectoriel(z,x);
+	y.normalize();
+
+	Matrix res(4);
+
+	res.data[0][0] = x.x;
+	res.data[1][0] = y.x;
+	res.data[2][0] = z.x;
+	res.data[0][3] = -center.x;
+
+	res.data[0][1] = x.y;
+	res.data[1][1] = y.y;
+	res.data[2][1] = z.y;
+	res.data[1][3] = -center.y;
+
+	res.data[0][2] = x.z;
+	res.data[1][2] = y.z;
+	res.data[2][2] = z.z;
+	res.data[2][3] = -center.z;
+
+	return res;
+}
+
 #pragma endregion
 
 #pragma region Dessin
@@ -256,8 +385,8 @@ void drawTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, TGAColor 
 	line(p3.x, p3.y, p1.x, p1.y, image, color);
 }
 
-void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F v1, Vec3F v2, Vec3F v3) {
-	//Varialbe qui servent pour l'opti
+void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F v1, Vec3F v2, Vec3F v3, int numImage) {
+	//Variable qui servent pour l'opti
 	vector<int> tabX = vector<int>(); tabX.push_back(p1.x); tabX.push_back(p2.x); tabX.push_back(p3.x);
 	vector<int> tabY = vector<int>(); tabY.push_back(p1.y); tabY.push_back(p2.y); tabY.push_back(p3.y);
 
@@ -266,8 +395,7 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 	TGAColor colorNormal;
 	Vec3F texturePoint;
 	Vec3F n;
-	float norme, intensity;
-	Vec3F lumiere(0, 0, 1);
+	float intensity;
 
 	int xMin = minTab(tabX);
 	int xMax = maxTab(tabX);
@@ -304,12 +432,14 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 	if (isOnTheSameLine) {
 		return;
 	}
-
+	int temp;
 	//Pour chaque pixel qui pourrait être dans le triangle on vérifie si il est dedans et si oui on le colorie
 	for (int j = yMin; j < yMax; j++) {
 
 		for (int i = xMin; i < xMax; i++) {
 			
+			temp = i - taille * numImage;
+
 			courant = Point3D(i, j, 0);
 			Vec3F vecteurBari = barycentre(p1, p2, p3, courant);
 
@@ -321,11 +451,8 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 
 
 			//Normalisation
+			//n = getNormal(p1, p2, p3).normalize();
 			n = Vec3F((float)colorNormal.raw[2] / 128 - 1, (float)colorNormal.raw[1] / 128 - 1, (float)colorNormal.raw[0] / 128 - 1);
-			/*norme = sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
-			n.x /= norme;
-			n.y /= norme;
-			n.z /= norme;*/
 
 			//Calcul de l'intensité
 			intensity = max(0.f, min(1.f, produitScalaire(lumiere, n)));
@@ -341,21 +468,16 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 
 			//Si je suis dans le triangle
 			if (res * j >= res * (a1 * i + b1) && res1 * j >= res1 * (a2 * i + b2) && res2 * j >= res2 * (a3 * i + b3)) {
-				if (zbuffer[i + j * taille] < courant.z) {
-					zbuffer[i + j * taille] = courant.z;
+				if (zbuffer[temp + j * taille] < courant.z) {
+					zbuffer[temp + j * taille] = courant.z;
 					image.set(i, j, color);
 				}
 			}
 		}
 	}
-
-	//Sert pour le débug
-	/*line(0, b1, 1000, a1 * 1000 + b1, image, res == 1 ? red : white);
-	line(0, b2, 1000, a2 * 1000 + b2, image, res1 == 1 ? red : white);
-	line(0, b3, 1000, a3 * 1000 + b3, image, res2 == 1 ? red : white);*/
 }
 
-void drawFile(string fileName, TGAImage &image) {
+void drawFile(string fileName, TGAImage &image, int numImage) {
 
 	ifstream fichier(fileName, ios::in);  // on ouvre le fichier en lecture
 
@@ -374,14 +496,22 @@ void drawFile(string fileName, TGAImage &image) {
 		vector<Point3D> triangles = vector<Point3D>();
 		vector<Point3D> centerF = vector<Point3D>();
 		vector<Vec3F> textCoord = vector<Vec3F>();
+		Vec3F v;
 
 		while (getline(fichier, ligne)) {
 			if (ligne[0] == 'v' && ligne[1] == ' ') {
 				istringstream(ligne) >> option >> xf >> yf >> zf;
-				x = xf * (taille / 2) + taille / 2;
+				
+				x = xf * (taille / 2) + taille / 2 + numImage*taille;
 				y = yf * (taille / 2) + taille / 2;
 				z = zf * (taille / 2) + taille / 2;
-				points.push_back(Point3D(x, y, z, xf, yf, zf));
+
+				v = Vec3F(x, y, z);
+
+				//Normalement avec ça j'ai la caméra ou je veux
+				//v = Vec3F(ViewPort.multiply(Projection).multiply(ModelView).multiply(Matrix(xf,yf,zf)));
+
+				points.push_back(Point3D(v.x, v.y, v.z, xf, yf, zf));
 			}
 			else if (ligne[0] == 'v' && ligne[1] == 't') {
 				istringstream(ligne) >> option >> xf >> yf >> zf;
@@ -410,7 +540,7 @@ void drawFile(string fileName, TGAImage &image) {
 			point2 = points.at(triangles.at(i).y - 1);
 			point3 = points.at(triangles.at(i).z - 1);
 			
-			drawFillTriangle(point1, point2, point3, image, v1, v2, v3);
+			drawFillTriangle(point1, point2, point3, image, v1, v2, v3, numImage);
 		}
 
 		fichier.close();  // on ferme le fichier
@@ -423,30 +553,46 @@ void drawFile(string fileName, TGAImage &image) {
 #pragma endregion
 
 int main(int argc, char** argv) {
-	TGAImage image(taille, taille, TGAImage::RGB);
+	int nbImages = 2;
+
+	TGAImage image(taille*nbImages, taille, TGAImage::RGB);
+
+	ModelView = lookat(eye, center, Vec3F(0, 1, 0));
+	Projection = Matrix(4);
+	ViewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
+	Projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
+
+	Matrix z = (ViewPort.multiply(Projection).multiply(ModelView));
 
 	
 	img = Image("obj/african_head/african_head_diffuse.tga","obj/african_head/african_head_nm.tga");
-	drawFile("obj/african_head/african_head.obj", image);
+	drawFile("obj/african_head/african_head.obj", image,0);
 
 	img = Image("obj/african_head/african_head_eye_inner_diffuse.tga", "obj/african_head/african_head_eye_inner_nm.tga");
-	drawFile("obj/african_head/african_head_eye_inner.obj", image);
+	drawFile("obj/african_head/african_head_eye_inner.obj", image,0);
+
+	
+	for (int i = 0; i < taille*taille; i++) {
+		zbuffer[i] = -1;
+	}
+	
+	img = Image("obj/diablo3_pose/diablo3_pose_diffuse.tga","obj/diablo3_pose/diablo3_pose_nm.tga");
+	drawFile("obj/diablo3_pose/diablo3_pose.obj", image,1);	
 	
 
 	/*
-	img = Image("obj/diablo3_pose/diablo3_pose_diffuse.tga","obj/diablo3_pose/diablo3_pose_nm.tga");
-	drawFile("obj/diablo3_pose/diablo3_pose.obj", image);
-	*/
-
-	/*
+	for (int i = 0; i < taille*taille; i++) {
+		zbuffer[i] = -1;
+	}
+	
 	img = Image("obj/boggie/body_diffuse.tga", "obj/boggie/body_nm_tangent.tga");
-	drawFile("obj/boggie/body.obj", image);
+	drawFile("obj/boggie/body.obj", image,2);
 
 	img = Image("obj/boggie/head_diffuse.tga", "obj/boggie/head_nm_tangent.tga");
-	drawFile("obj/boggie/head.obj", image);
+	drawFile("obj/boggie/head.obj", image,2);
 
 	img = Image("obj/boggie/eyes_diffuse.tga", "obj/boggie/eyes_nm_tangent.tga");
-	drawFile("obj/boggie/eyes.obj", image);
+	drawFile("obj/boggie/eyes.obj", image,2);
 	*/
 
 	//drawFillTriangle(Point3D(100, 100, 100), Point3D(900, 100, 100), Point3D(500, 900, 100), image, TGAColor(255, 0, 0, 255), TGAColor(0, 255, 0, 255), TGAColor(0, 0, 255, 255));
