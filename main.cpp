@@ -17,6 +17,7 @@ using namespace std;
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
 const int taille = 1000;
+bool anaglyphe = false;
 int *zbuffer = new int[taille*taille];
 
 
@@ -159,7 +160,7 @@ struct Image {
 
 Image img;
 Vec3F lumiere(0, 0, 1);
-Vec3F eye(1, -1, 3);
+Vec3F eye(1, 1, 3);
 Vec3F center(0, 0, 0);
 Matrix modelView;
 Matrix projection;
@@ -470,7 +471,20 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 			if (res * j >= res * (a1 * i + b1) && res1 * j >= res1 * (a2 * i + b2) && res2 * j >= res2 * (a3 * i + b3)) {
 				if (zbuffer[i + j * taille] < courant.z) {
 					zbuffer[i + j * taille] = courant.z;
-					image.set(i + taille*numImage, j, color);
+
+					if (anaglyphe) {
+						if (numImage %2 == 0) {
+							color.raw[0] = 0;
+							color.raw[1] = 0;
+						} else {
+							color.raw[2] = image.get(i, j).raw[2];
+						}
+
+						image.set(i + taille * (int)(numImage/2) , j, color);
+					}
+					else {
+						image.set(i + taille * numImage, j, color);
+					}
 				}
 			}
 		}
@@ -512,21 +526,23 @@ void drawFile(string fileName, TGAImage &image, int numImage) {
 
 				v.x = min(taille + 0.f, v.x);
 				v.x = v.x > 0.f ? v.x : 0.f;
+
 				v.y = min(taille + 0.f, v.y);
 				v.y = v.y > 0.f ? v.y : 0.f;
+
 				v.z = min(taille + 0.f, v.z);
 				v.z = v.z > 0.f ? v.z : 0.f;
 
 				points.push_back(Point3D(v.x, v.y, v.z, xf, yf, zf));
 			}
 			else if (ligne[0] == 'v' && ligne[1] == 't') {
-				istringstream(ligne) >> option >> xf >> yf >> zf;
-				textCoord.push_back(Vec3F(xf, yf, zf));
+				istringstream(ligne) >> option >> xf >> yf;
+				textCoord.push_back(Vec3F(xf, yf, 0));
 			}
 			else if (ligne[0] == 'f' && ligne[1] == ' ') {
 				istringstream(ligne) >> option >> p1 >> slash >> t1 >> trash >> p2 >> slash >> t2 >> trash >> p3 >> slash >> t3 >> trash;
-				centerF.push_back(Point3D(t1, t2, t3));
-				triangles.push_back(Point3D(p1, p2, p3));
+				centerF.push_back(Point3D(abs(t1), abs(t2), abs(t3)));
+				triangles.push_back(Point3D(abs(p1), abs(p2), abs(p3)));
 			}
 		}
 
@@ -569,9 +585,9 @@ int main(int argc, char** argv) {
 	eyes.push_back(Vec3F(-1, 0, -1));
 	eyes.push_back(Vec3F(-2, 0, 0)); // a gauche
 	eyes.push_back(Vec3F(-1, 0, 1));
-	int nbImages = eyes.size();
-
-	TGAImage image(taille*nbImages, taille, TGAImage::RGB);
+	//int nbImages = eyes.size();
+	int nbImages = 1;
+	TGAImage image = TGAImage(taille*nbImages, taille, TGAImage::RGB);
 
 	modelView = lookat(eye, center, Vec3F(0, 1, 0));
 	projection = Matrix(4);
@@ -591,6 +607,7 @@ int main(int argc, char** argv) {
 
 	img = Image("obj/diablo3_pose/diablo3_pose_diffuse.tga", "obj/diablo3_pose/diablo3_pose_nm.tga");
 
+	
 	for (int k = 0; k < nbImages; k++) {
 		eye = eyes[k];
 		lumiere = eye;
@@ -611,7 +628,29 @@ int main(int argc, char** argv) {
 		cout << k << endl;
 
 		drawFile("obj/diablo3_pose/diablo3_pose.obj", image, k);
+
 	}
+
+	if (anaglyphe) {
+		eye.x += 0.2;
+
+		modelView = lookat(eye, center, Vec3F(0, 1, 0));
+		projection = Matrix(4);
+		viewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
+		projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
+
+		produitMat = viewPort.multiply(projection);
+		produitMat = produitMat.multiply(modelView);
+
+		for (int i = 0; i < taille*taille; i++) {
+			zbuffer[i] = -1;
+		}
+
+		drawFile("obj/diablo3_pose/diablo3_pose.obj", image, 1);
+	}
+
+	/*img = Image("obj/maya/SirenBody_Bm.tga","obj/maya/SirenBody_Nrm.tga");
+	drawFile("obj/maya/maya.obj",image,0);*/
 	
 
 	/*
