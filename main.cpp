@@ -16,10 +16,10 @@ using namespace std;
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
-const int taille = 1000;
+const TGAColor gray = TGAColor(125, 125, 125, 255);
+const int taille = 1500;
 bool anaglyphe = false;
 int *zbuffer = new int[taille*taille];
-
 
 
 #pragma region Class
@@ -159,8 +159,8 @@ struct Image {
 #pragma endregion
 
 Image img;
-Vec3F lumiere(0, 0, 1);
-Vec3F eye(1, 1, 3);
+Vec3F lumiere;
+Vec3F eye;
 Vec3F center(0, 0, 0);
 Matrix modelView;
 Matrix projection;
@@ -337,6 +337,22 @@ Matrix lookat(Vec3F eye, Vec3F center, Vec3F up) {
 	return res;
 }
 
+void changerFond(TGAImage &img) {
+	int h = img.get_height();
+	int w = img.get_width();
+	for (int i = 0; i < h; i++) {
+		for (int j = 0; j < w; j++) {
+			img.set(i, j, gray);
+		}
+	}
+}
+
+void viderZbuffer() {
+	for (int i = 0; i < taille*taille; i++) {
+		zbuffer[i] = -1;
+	}
+}
+
 #pragma endregion
 
 #pragma region Dessin
@@ -469,18 +485,18 @@ void drawFillTriangle(Point3D p1, Point3D p2, Point3D p3, TGAImage &image, Vec3F
 
 			//Si je suis dans le triangle
 			if (res * j >= res * (a1 * i + b1) && res1 * j >= res1 * (a2 * i + b2) && res2 * j >= res2 * (a3 * i + b3)) {
-				if (zbuffer[i + j * taille] < courant.z) {
+				if (zbuffer[i + j * taille] <= courant.z) {
 					zbuffer[i + j * taille] = courant.z;
 
 					if (anaglyphe) {
 						if (numImage %2 == 0) {
-							color.raw[0] = 0;
-							color.raw[1] = 0;
+							color.raw[0] = image.get(i, j).raw[0];
+							color.raw[1] = image.get(i, j).raw[1];
 						} else {
 							color.raw[2] = image.get(i, j).raw[2];
 						}
 
-						image.set(i + taille * (int)(numImage/2) , j, color);
+						image.set(i, j, color);
 					}
 					else {
 						image.set(i + taille * numImage, j, color);
@@ -505,7 +521,6 @@ void drawFile(string fileName, TGAImage &image, int numImage) {
 		int t1, t2, t3;
 		int x, y, z, poubelle;
 		char slash;
-		int max = 0;
 		vector<Point3D> points = vector<Point3D>();
 		vector<Point3D> triangles = vector<Point3D>();
 		vector<Point3D> centerF = vector<Point3D>();
@@ -515,23 +530,12 @@ void drawFile(string fileName, TGAImage &image, int numImage) {
 		while (getline(fichier, ligne)) {
 			if (ligne[0] == 'v' && ligne[1] == ' ') {
 				istringstream(ligne) >> option >> xf >> yf >> zf;
-				
-				/*x = xf * (taille / 2) + taille / 2;
-				y = yf * (taille / 2) + taille / 2;
-				z = zf * (taille / 2) + taille / 2;
-
-				v = Vec3F(x, y, z);*/
 
 				v = Vec3F(produitMat.multiply(Matrix(xf,yf,zf)));
 
-				v.x = min(taille + 0.f, v.x);
-				v.x = v.x > 0.f ? v.x : 0.f;
+				v.x = max(min(taille + 0.f, v.x),0.f);
 
-				v.y = min(taille + 0.f, v.y);
-				v.y = v.y > 0.f ? v.y : 0.f;
-
-				v.z = min(taille + 0.f, v.z);
-				v.z = v.z > 0.f ? v.z : 0.f;
+				v.y = max(min(taille + 0.f, v.y),0.f);
 
 				points.push_back(Point3D(v.x, v.y, v.z, xf, yf, zf));
 			}
@@ -570,68 +574,8 @@ void drawFile(string fileName, TGAImage &image, int numImage) {
 	else {
 		cout << "echec ouverture fichier" << endl;
 	}
-}
 
-#pragma endregion
-
-int main(int argc, char** argv) {
-
-	vector<Vec3F> eyes;
-	eyes.push_back(Vec3F(0, 0, 2)); // devant
-	eyes.push_back(Vec3F(1, 0, 1));
-	eyes.push_back(Vec3F(2, 0, 0)); // a droite
-	eyes.push_back(Vec3F(1, 0, -1));
-	eyes.push_back(Vec3F(0, 0, -2)); // derrière
-	eyes.push_back(Vec3F(-1, 0, -1));
-	eyes.push_back(Vec3F(-2, 0, 0)); // a gauche
-	eyes.push_back(Vec3F(-1, 0, 1));
-	//int nbImages = eyes.size();
-	int nbImages = 1;
-	TGAImage image = TGAImage(taille*nbImages, taille, TGAImage::RGB);
-
-	modelView = lookat(eye, center, Vec3F(0, 1, 0));
-	projection = Matrix(4);
-	viewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
-	projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
-
-	produitMat = viewPort.multiply(projection);
-	produitMat = produitMat.multiply(modelView);
-
-	/*
-	img = Image("obj/african_head/african_head_diffuse.tga","obj/african_head/african_head_nm.tga");
-	drawFile("obj/african_head/african_head.obj", image,0);
-
-	img = Image("obj/african_head/african_head_eye_inner_diffuse.tga", "obj/african_head/african_head_eye_inner_nm.tga");
-	drawFile("obj/african_head/african_head_eye_inner.obj", image,0);
-	*/
-
-	img = Image("obj/diablo3_pose/diablo3_pose_diffuse.tga", "obj/diablo3_pose/diablo3_pose_nm.tga");
-
-	
-	for (int k = 0; k < nbImages; k++) {
-		eye = eyes[k];
-		lumiere = eye;
-		lumiere.normalize();
-
-		modelView = lookat(eye, center, Vec3F(0, 1, 0));
-		projection = Matrix(4);
-		viewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
-		projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
-
-		produitMat = viewPort.multiply(projection);
-		produitMat = produitMat.multiply(modelView);
-
-		for (int i = 0; i < taille*taille; i++) {
-			zbuffer[i] = -1;
-		}
-
-		cout << k << endl;
-
-		drawFile("obj/diablo3_pose/diablo3_pose.obj", image, k);
-
-	}
-
-	if (anaglyphe) {
+	if (anaglyphe && numImage == 0) {
 		eye.x += 0.2;
 
 		modelView = lookat(eye, center, Vec3F(0, 1, 0));
@@ -646,17 +590,82 @@ int main(int argc, char** argv) {
 			zbuffer[i] = -1;
 		}
 
-		drawFile("obj/diablo3_pose/diablo3_pose.obj", image, 1);
-	}
+		drawFile(fileName, image, 1);
 
-	/*img = Image("obj/maya/SirenBody_Bm.tga","obj/maya/SirenBody_Nrm.tga");
-	drawFile("obj/maya/maya.obj",image,0);*/
+		eye.x -= 0.2;
+
+		modelView = lookat(eye, center, Vec3F(0, 1, 0));
+		projection = Matrix(4);
+		viewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
+		projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
+
+		produitMat = viewPort.multiply(projection);
+		produitMat = produitMat.multiply(modelView);
+	}
+}
+
+#pragma endregion
+
+int main(int argc, char** argv) {
+
+	eye = Vec3F(1, 1, 3);
+	lumiere = eye;
+	lumiere.normalize();
+
+	bool diablo = true;
+	bool affrican = false;
+
+	int nbImages = 1;
+
+	string textureFile;
+	string nmFile;
+	string obj;
+
+	TGAImage image = TGAImage(taille*nbImages, taille, TGAImage::RGB);
+	changerFond(image);
+
+	#pragma region  calculProjec
+	modelView = lookat(eye, center, Vec3F(0, 1, 0));
+	projection = Matrix(4);
+	viewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
+	projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
+
+	produitMat = viewPort.multiply(projection);
+	produitMat = produitMat.multiply(modelView);
+	#pragma endregion
+
+	if (diablo) {
+		textureFile = "obj/diablo3_pose/diablo3_pose_diffuse.tga";
+		nmFile = "obj/diablo3_pose/diablo3_pose_nm.tga";
+		obj = "obj/diablo3_pose/diablo3_pose.obj";
+
+		img = Image(textureFile.c_str(), nmFile.c_str());
+		drawFile(obj, image, 0);
+	}
 	
+	if (affrican) {
+		textureFile = "obj/african_head/african_head_diffuse.tga";
+		nmFile = "obj/african_head/african_head_nm.tga";
+		obj = "obj/african_head/african_head.obj";
+		
+		img = Image(textureFile.c_str(), nmFile.c_str());
+		drawFile(obj, image, 0);
+
+		textureFile = "obj/african_head/african_head_eye_inner_diffuse.tga";
+		nmFile = "obj/african_head/african_head_eye_inner_nm.tga";
+		obj = "obj/african_head/african_head_eye_inner.obj";
+
+		img = Image(textureFile.c_str(), nmFile.c_str());
+		drawFile(obj, image, 0);
+	}
 
 	/*
-	for (int i = 0; i < taille*taille; i++) {
-		zbuffer[i] = -1;
-	}
+	"obj/african_head/african_head_eye_inner_diffuse.tga"
+	"obj/african_head/african_head_eye_inner_nm.tga"	
+	"obj/african_head/african_head_eye_inner.obj"
+
+	img = Image("obj/maya/SirenBody_Bm.tga","obj/maya/SirenBody_Nrm.tga");
+	drawFile("obj/maya/maya.obj",image,0);
 	
 	img = Image("obj/boggie/body_diffuse.tga", "obj/boggie/body_nm_tangent.tga");
 	drawFile("obj/boggie/body.obj", image,2);
@@ -668,8 +677,29 @@ int main(int argc, char** argv) {
 	drawFile("obj/boggie/eyes.obj", image,2);
 	*/
 
-	//drawFillTriangle(Point3D(100, 100, 100), Point3D(900, 100, 100), Point3D(500, 900, 100), image, TGAColor(255, 0, 0, 255), TGAColor(0, 255, 0, 255), TGAColor(0, 0, 255, 255));
-    image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
+	
+	/*for (int k = 0; k < nbImages; k++) {
+		//eye = eyes[k];
+		lumiere = eye;
+		lumiere.normalize();
+
+		modelView = lookat(eye, center, Vec3F(0, 1, 0));
+		projection = Matrix(4);
+		viewPort = viewport(taille / 8, taille / 8, taille * 3 / 4, taille * 3 / 4);
+		projection.data[3][2] = -1.f / (eye.soustraction(center)).getNorme();
+
+		produitMat = viewPort.multiply(projection);
+		produitMat = produitMat.multiply(modelView);
+
+		viderZbuffer();
+
+		cout << k << endl;
+
+		drawFile(obj, image, k);
+
+	}*/
+
+	image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("output.tga");
 
     return 0;
